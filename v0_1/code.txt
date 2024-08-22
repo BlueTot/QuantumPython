@@ -1,0 +1,21 @@
+qsv[3] states = |0>
+qsv[3] j = |0>
+j.h()
+int[3] i = measure(states)
+int[3] k = measure(j)
+
+def f(state : int[n]) -> bool:
+    output = 0
+    for i in state.bits:
+        if state[i]:
+            output ^= 1
+    return output
+
+qsv[n] states = zero
+states.h()
+forall state in states:
+    if f(state) == 1:
+        state.add_phase(1)
+states.h()
+int[n] secret_string = measure(states)
+print(secret_string)
