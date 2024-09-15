@@ -2,6 +2,9 @@
 
 from qiskit_aer import Aer
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
+from contextlib import contextmanager
+import sys
+import builtins
 
 '''Helper Classes & Functions'''
 
@@ -11,52 +14,114 @@ class _ArgumentError(Exception): # Argument error
 class _QuantumError(Exception): # Quantum error
     pass
 
-class _RestrictedBuiltins(dict): # Custom dictionary to override builtins
+class _DisallowType: # Context manager to disable classical variables and functions in the forall construct
+    def __init__(self, *types, disable_builtins=None):
+        self.types = types
+        self.disable_builtins = disable_builtins or []
+        self.original_builtins = {}
+        self.enabled = False
+        self.original_trace_function = sys.gettrace()
 
-    def __init__(self):
-        self.restricted = __builtins__.__dict__.copy()
+    def manual_enter(self):
+        if not self.enabled:
+            self.original_trace_function = sys.gettrace()
+            sys.settrace(self.trace_calls)
+            self.override_builtins()
+            self.enabled = True
 
-    def __getitem__(self, key):
-        if key in self.restricted:  # List of restricted functions
-            raise _QuantumError(f"<{key}> is disabled in quantum environments")
-        return super().__getitem__(key)
+    def manual_exit(self):
+        if self.enabled:
+            sys.settrace(self.original_trace_function)
+            self.restore_builtins()
+            self.enabled = False
+
+    def __enter__(self): # enter context manager, disable variables and functions
+        self.manual_enter()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback): # exit context manager, re-enable variables and functions
+        self.manual_exit()
+
+    def trace_calls(self, frame, event, arg):
+        if event == 'call':
+            return self.trace_lines
+        return None
+
+    def trace_lines(self, frame, event, arg): # check variables within local scope of function
+        if event == 'line':
+            local_vars = frame.f_locals.copy()
+            for var_name, var_value in local_vars.items():
+                if isinstance(var_value, self.types) and var_name[:2] != "__" and var_name[-2:] != "__":
+                    raise _QuantumError(f"Instantiation of variable <{var_name}> of type {type(var_value).__name__} is disallowed in quantum environments")
+        return self.trace_lines
+
+    def override_builtins(self): # override the builtins dictionary
+
+        sys.settrace(self.original_trace_function) # disable data type ban
+
+        for name in self.disable_builtins:
+            if name in builtins.__dict__:
+                self.original_builtins[name] = builtins.__dict__[name]
+                builtins.__dict__[name] = self.disabled_builtin(name)
+
+        self.original_trace_function = sys.gettrace() # enable data type ban
+        sys.settrace(self.trace_calls)
+
+    def restore_builtins(self): # restore builtins
+        for name, original in self.original_builtins.items():
+            builtins.__dict__[name] = original
+
+    def disabled_builtin(self, name): # raise error if function is disabled
+
+        def disabled(*args, **kwargs):
+            raise _QuantumError(f"The built-in function '{name}' is disabled.")
+
+        return disabled
 
 '''Internal Data Types (not accessible by import)'''
 
 class _iqs: # intermediate quantum state, used for calculations by interpreter
 
-    def __init__(self, num_bits):
-        
-        self.num_bits = num_bits
-        self.qreg = QuantumRegister(num_bits)
+    def __init__(self, __num_bits__):
+        global cm
+            
+        cm.manual_exit()
+
+        self.num_bits = __num_bits__
+        self.qreg = QuantumRegister(self.num_bits)
         _QuantumManager.qc.add_register(self.qreg)
-   
+        
+        cm.manual_enter()
+
     # And operation
     def __and__(self, other):
+        global cm
 
         # Checking types
-        if all([not isinstance(other, t) for t in (qconst, qconst_inner, qstate, iqs)]):
+        if all([not isinstance(other, t) for t in (qconst, _qconst_inner, _qstate, _iqs)]):
             raise TypeError("Argument must be a qconst/qstate")
-
-        num_bits = self.num_bits # Number of bits of the qstate (self)
 
         if isinstance(other, qconst): # argument is a qconst
             q2 = _QuantumManager.qconst_mapping[hash(other)]
 
-        elif isinstance(other, qconst_inner) or isinstance(other, iqs): # argument is a qconst_inner
+        elif isinstance(other, _qconst_inner) or isinstance(other, iqs): # argument is a _qconst_inner
             q2 = other
         
         else: # argument is a qstate
             q2 = _QuantumManager.qstate_mapping[hash(other)]
             q2 = _QuantumManager.qsv_mapping[hash(q2.qsv_var)]
         
-        if q2.num_bits != num_bits:
+        if q2.num_bits != self.num_bits:
             raise TypeError("Arguments must have the same number of bits")
-
-        output = iqs(num_bits) # Create a new intermediate quantum state for the output
         
-        for i in range(num_bits): # Loop through all bits
+        output = _iqs(self.num_bits) # Create a new intermediate quantum state for the output
+        
+        cm.manual_exit()
+
+        for i in range(self.num_bits): # Loop through all bits
             _QuantumManager.qc.ccx(self.qreg[i], q2.qreg[i], output.qreg[i]) # AND operation
+        
+        cm.manual_enter()
 
         return output # Return the IQS
 
@@ -69,7 +134,7 @@ class _qconst_inner: # quantum constant class, used to define qsv's that cannot 
 
         if type(value) != int or not(0 <= int(value) < 2**num_bits):
             raise TypeError(f"Value must be a {num_bits}-bit non-negative integer")
-
+    
         self.num_bits = num_bits
 
         qreg = QuantumRegister(num_bits)
@@ -78,7 +143,7 @@ class _qconst_inner: # quantum constant class, used to define qsv's that cannot 
             if bit == "1":
                 _QuantumManager.qc.x(qreg[i])
         self.qreg = qreg
-
+    
     def __and__(self, other): # And method
         return other.__and__(self)
 
@@ -89,31 +154,34 @@ class _qstate_inner: # quantum state class, instantiated through the use of the 
         self.qsv_var = qsv_var
 
     def __and__(self, other): # And method
+        global cm
         
         # Checking types
-        if all([not isinstance(other, t) for t in (qconst, qconst_inner, qstate, iqs)]):
+        if all([not isinstance(other, t) for t in (qconst, _qconst_inner, _qstate, _iqs)]):
             raise TypeError("Argument must be a qconst/qstate")
-
-        num_bits = self.qsv_var.num_bits # Number of bits of the qstate (self)
 
         if isinstance(other, qconst): # argument is a qconst
             q2 = _QuantumManager.qconst_mapping[hash(other)]
 
-        elif isinstance(other, qconst_inner) or isinstance(other, iqs): # argument is a qconst_inner
+        elif isinstance(other, _qconst_inner) or isinstance(other, iqs): # argument is a _qconst_inner
             q2 = other
         
         else: # argument is a qstate
             q2 = _QuantumManager.qstate_mapping[hash(other)]
             q2 = _QuantumManager.qsv_mapping[hash(q2.qsv_var)]
         
-        if q2.num_bits != num_bits:
+        if q2.num_bits != self.qsv_var.num_bits:
             raise TypeError("Arguments must have the same number of bits")
-
-        output = iqs(num_bits) # Create a new intermediate quantum state for the output
+        
+        output = _iqs(self.qsv_var.num_bits) # Create a new intermediate quantum state for the output
         q1 = _QuantumManager.qsv_mapping[hash(self.qsv_var)]
         
-        for i in range(num_bits): # Loop through all bits
+        cm.manual_exit()
+
+        for i in range(self.qsv_var.num_bits): # Loop through all bits
             _QuantumManager.qc.ccx(q1.qreg[i], q2.qreg[i], output.qreg[i]) # AND operation
+        
+        cm.manual_enter()
 
         return output # Return the IQS
 
@@ -127,30 +195,21 @@ class _qsv_inner: # quantum state vector class (inner workings, covered by inter
         if type(value) != int or not(0 <= int(value) < 2**num_bits):
             raise TypeError(f"Value must be a {num_bits}-bit non-negative integer")
         
-        self.__num_bits = num_bits
+        self.num_bits = num_bits
 
         qreg = QuantumRegister(num_bits)
         _QuantumManager.qc.add_register(qreg)
         for i, bit in enumerate(bin(value)[2:].zfill(num_bits)):
             if bit == "1":
                 _QuantumManager.qc.x(qreg[i])
-        self.__qreg = qreg
+        self.qreg = qreg
 
         self.measured = False
 
-    @property
-    def num_bits(self):
-        return self.__num_bits
-
-    @property
-    def qreg(self):
-        return self.__qreg
-    
     # Hadamard transform on qsv
     def h(self):
-             
-        for i in range(self.__num_bits):
-            _QuantumManager.qc.h(self.__qreg[i])
+        for i in range(self.num_bits):
+            _QuantumManager.qc.h(self.qreg[i])
 
 class _qstate: # quantum state class (interface)
 
@@ -163,8 +222,13 @@ class _qstate: # quantum state class (interface)
         raise _QuantumError("You cannot view the state of a quantum state")
 
     def __and__(self, other):
+        global cm
 
-        return self.__inner.__and__(other)
+        cm.manual_exit()
+        output = self.__inner.__and__(other)
+        cm.manual_enter()
+
+        return output
 
 '''Classes & Functions accessible by import'''
 
@@ -194,14 +258,17 @@ class qsv: # quantum state vector class (interface)
 
     # Method to store state into qsv
     def store(self, state):
+        global cm
 
         if self.__inner.measured:
             raise _QuantumError("qsv no longer exists")
 
-        if not(isinstance(state, qstate) or isinstance(state, iqs)):
+        if not(isinstance(state, _qstate) or isinstance(state, _iqs)):
             raise TypeError("You can only store qstates into a qsv")
+        
+        cm.manual_exit()
 
-        if isinstance(state, qstate): # state is a qstate
+        if isinstance(state, _qstate): # state is a qstate
             state = _QuantumManager.qstate_mapping[hash(state)]
             state = _QuantumManager.qsv_mapping[hash(state.qsv_var)]
             _QuantumManager.qc.cx(state.qreg, self.__inner.qreg)
@@ -210,6 +277,12 @@ class qsv: # quantum state vector class (interface)
             _QuantumManager.qc.cx(state.qreg, self.__inner.qreg)
         
         print(_QuantumManager.qc)
+
+        cm.manual_enter()
+
+    @property
+    def states(self):
+        return [_qstate(self)]
 
     def __repr__(self): # try to print qsv
 
@@ -269,6 +342,21 @@ def quantum(func): # Quantum function decorator
             print(f"needs to be quantum processed")
 
     return wrapper
+
+def parallelize(iterable): # Forall decorator to run quantum code in parallel
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            global cm
+            with _DisallowType(int, str, float, bool, list, tuple, dict, set, 
+                    disable_builtins=['print']) as cm:
+                for item in iterable:
+                    func(item)
+        return wrapper
+    return decorator
+
+def auto_execute(func): # Decorator to auto execute functions after definition
+    func()
+    return func
 
 '''Circuit Manager'''
 
