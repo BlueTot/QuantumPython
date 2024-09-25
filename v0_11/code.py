@@ -1,4 +1,4 @@
-from qython import qsv, qconst, quantum, measure, parallelize, auto_execute
+from qython import qsv, qconst, quantum, measure, parallelize, auto_execute, qif
 
 x = qsv(3, 0)
 x.h()
@@ -9,7 +9,8 @@ z = qconst(3, 7)
 @auto_execute
 @parallelize(x.states)
 def process_item(state):
-    y.store(state & z)
+    with qif(state):
+        y.store(state & z)
     return
 
 n = measure(y)

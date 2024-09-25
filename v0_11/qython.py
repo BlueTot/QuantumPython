@@ -358,11 +358,42 @@ def auto_execute(func): # Decorator to auto execute functions after definition
     func()
     return func
 
+class qif:
+    
+    def __init__(self, qbool): # Constructor
+        global cm
+
+        if not isinstance(qbool, (_qstate, _iqs)):
+            raise TypeError("Input to a conditional must be a quantum boolean")
+       
+        cm.manual_exit()
+
+        if isinstance(qbool, _qstate):
+            qbool = _QuantumManager.qstate_mapping[hash(qbool)]
+            qbool = _QuantumManager.qsv_mapping[hash(qbool.qsv_var)]
+        
+        if qbool.num_bits != 1:
+            raise TypeError("Input to a conditional must be a quantum boolean")
+
+        self.condition_register = qbool.qreg
+
+        self.__qc = QuantumCircuit(*_QuantumManager.main_qc.qregs)
+        cm.manual_enter()
+    
+    def __enter__(self): # Upon entering context manager
+        _QuantumManager.qc = self.__qc
+
+    def __exit__(self): # Upon exiting context manager
+        controlled_gate = _QuantumManager.qc.to_gate().control(1)
+        _QuantumManager.main_qc.append(controlled_gate, [self.condition_register[0]] + list(_QuantumManager.main_qc.qregs))
+        _QuantumManager.qc = _QuantumManager.main_qc
+
 '''Circuit Manager'''
 
 class _QuantumManager:
-
-    qc = QuantumCircuit() # quantum circuit
+    
+    main_qc = QuantumCircuit() # main quantum circuit
+    qc = main_qc # current circuit being built
     cregs = [] # classical registers
     qsv_mapping = {} # mapping between interface and inner qsv data type
     qstate_mapping = {}
