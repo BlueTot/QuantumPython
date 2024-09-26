@@ -1,8 +1,0 @@
-states = qsv(3, 0)
-j = qsv(3, 0)
-j.h()
-a = j
-i = measure(j)
-k = measure(states)
-print(i, k)
-print(a)

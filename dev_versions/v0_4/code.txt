@@ -1,4 +1,0 @@
-states = qsv(3, 0)
-states.h()
-forall state in states:
-    print("hello world")
