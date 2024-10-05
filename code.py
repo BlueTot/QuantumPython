@@ -9,7 +9,7 @@ z = qconst(3, 7)
 @auto_execute
 @parallelize(x.states)
 def process_item(state):
-    with qif(state):
+    with qif(state == z):
         y.store(state & z)
     return
 

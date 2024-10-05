@@ -144,8 +144,14 @@ class _qconst_inner: # quantum constant class, used to define qsv's that cannot 
                 _QuantumManager.qc.x(qreg[i])
         self.qreg = qreg
     
+    def __hash__(self):
+        return id(self)
+
     def __and__(self, other): # And method
         return other.__and__(self)
+        
+    def __eq__(self, other): # Equality method
+        return other.__eq__(self)
 
 class _qstate_inner: # quantum state class, instantiated through the use of the "forall" statement
     
@@ -157,13 +163,13 @@ class _qstate_inner: # quantum state class, instantiated through the use of the 
         global cm
         
         # Checking types
-        if all([not isinstance(other, t) for t in (qconst, _qconst_inner, _qstate, _iqs)]):
+        if not isinstance(other, (qconst, _qconst_inner, _qstate, _iqs)):
             raise TypeError("Argument must be a qconst/qstate")
 
         if isinstance(other, qconst): # argument is a qconst
             q2 = _QuantumManager.qconst_mapping[hash(other)]
 
-        elif isinstance(other, _qconst_inner) or isinstance(other, iqs): # argument is a _qconst_inner
+        elif isinstance(other, (_qconst_inner, iqs)): # argument is a _qconst_inner
             q2 = other
         
         else: # argument is a qstate
@@ -184,6 +190,42 @@ class _qstate_inner: # quantum state class, instantiated through the use of the 
         cm.manual_enter()
 
         return output # Return the IQS
+
+    def __eq__(self, other): # Equality method
+        global cm
+
+        # Checking types
+        if not isinstance(other, (qconst, _qconst_inner, _qstate, _iqs)):
+            raise TypeError("Argument must be a qconst/qstate")
+
+        if isinstance(other, qconst): # argument is a qconst
+            q2 = _QuantumManager.qconst_mapping[hash(other)]
+
+        elif isinstance(other, (_qconst_inner, iqs)): # argument is a _qconst_inner
+            q2 = other
+        
+        else: # argument is a qstate
+            q2 = _QuantumManager.qstate_mapping[hash(other)]
+            q2 = _QuantumManager.qsv_mapping[hash(q2.qsv_var)]
+        
+        if q2.num_bits != self.qsv_var.num_bits:
+            raise TypeError("Arguments must have the same number of bits")
+        
+        output = _iqs(1) # create the output register
+        q1 = _QuantumManager.qsv_mapping[hash(self.qsv_var)]
+
+        cm.manual_exit() # disable the context manager
+        
+        _QuantumManager.qc.add_register(ancilla_reg := QuantumRegister(self.qsv_var.num_bits)) # Allocate a working register
+
+        for i in range(self.qsv_var.num_bits):
+            _QuantumManager.qc.cx(q1.qreg[i], ancilla_reg[i])
+            _QuantumManager.qc.cx(q2.qreg[i], ancilla_reg[i])
+        _QuantumManager.qc.mcx(ancilla_reg, output.qreg, ctrl_state="0"*self.qsv_var.num_bits)
+        
+        cm.manual_enter() # re-enable the context manager
+        
+        return output
 
 class _qsv_inner: # quantum state vector class (inner workings, covered by interface)
 
@@ -218,6 +260,9 @@ class _qstate: # quantum state class (interface)
         self.__inner = _qstate_inner(qsv_var)
         _QuantumManager.qstate_mapping[hash(self)] = self.__inner
     
+    def __hash__(self):
+        return id(self)
+
     def __repr__(self):
         raise _QuantumError("You cannot view the state of a quantum state")
 
@@ -226,6 +271,15 @@ class _qstate: # quantum state class (interface)
 
         cm.manual_exit()
         output = self.__inner.__and__(other)
+        cm.manual_enter()
+
+        return output
+
+    def __eq__(self, other):
+        global cm
+
+        cm.manual_exit()
+        output = self.__inner.__eq__(other)
         cm.manual_enter()
 
         return output
@@ -254,7 +308,6 @@ class qsv: # quantum state vector class (interface)
             raise _QuantumError("qsv no longer exists")
 
         self.__inner.h()
-        print(_QuantumManager.qc)
 
     # Method to store state into qsv
     def store(self, state):
@@ -276,8 +329,6 @@ class qsv: # quantum state vector class (interface)
         else: # state is a iqs
             _QuantumManager.qc.cx(state.qreg, self.__inner.qreg)
         
-        print(_QuantumManager.qc)
-
         cm.manual_enter()
 
     @property
@@ -381,12 +432,30 @@ class qif:
         cm.manual_enter()
     
     def __enter__(self): # Upon entering context manager
+        global cm
         _QuantumManager.qc = self.__qc
+        cm.manual_exit()
+        print(_QuantumManager.qc)
+        cm.manual_enter()
 
-    def __exit__(self): # Upon exiting context manager
+    def __exit__(self, exc_type, exc_value, tb): # Upon exiting context manager
+        global cm
+
+        cm.manual_exit()
+        
+        print(_QuantumManager.qc)
+        print(_QuantumManager.main_qc)
+        print(_QuantumManager.main_qc.qregs)
+        
+        regs = []
+        for reg in _QuantumManager.main_qc.qregs:
+            regs.extend([reg[i] for i in range(reg.size)])
+
         controlled_gate = _QuantumManager.qc.to_gate().control(1)
-        _QuantumManager.main_qc.append(controlled_gate, [self.condition_register[0]] + list(_QuantumManager.main_qc.qregs))
+        _QuantumManager.main_qc.append(controlled_gate, [self.condition_register[0]] + regs)
         _QuantumManager.qc = _QuantumManager.main_qc
+
+        cm.manual_enter()
 
 '''Circuit Manager'''
 
