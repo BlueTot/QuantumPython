@@ -10,9 +10,11 @@ z = qconst(3, 7)
 @parallelize(x.states)
 def process_item(state):
     with qif(state == z):
-        y.store(state & z)
+        y.store(state)
     return
 
+m = measure(x)
+print(m)
 n = measure(y)
 print(n)
 

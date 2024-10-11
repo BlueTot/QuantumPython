@@ -2,6 +2,7 @@
 
 from qiskit_aer import Aer
 from qiskit.circuit import QuantumCircuit, QuantumRegister, ClassicalRegister
+from qiskit.compiler import transpile
 from contextlib import contextmanager
 import sys
 import builtins
@@ -427,33 +428,37 @@ class qif:
             raise TypeError("Input to a conditional must be a quantum boolean")
 
         self.condition_register = qbool.qreg
+        regs = []
+        for reg in _QuantumManager.main_qc.qregs:
+            if reg != self.condition_register:
+                regs.extend([reg[i] for i in range(reg.size)])
 
-        self.__qc = QuantumCircuit(*_QuantumManager.main_qc.qregs)
+        self.__qc = QuantumCircuit(regs)
         cm.manual_enter()
     
     def __enter__(self): # Upon entering context manager
-        global cm
         _QuantumManager.qc = self.__qc
-        cm.manual_exit()
-        print(_QuantumManager.qc)
-        cm.manual_enter()
 
     def __exit__(self, exc_type, exc_value, tb): # Upon exiting context manager
         global cm
 
         cm.manual_exit()
-        
-        print(_QuantumManager.qc)
-        print(_QuantumManager.main_qc)
-        print(_QuantumManager.main_qc.qregs)
-        
+       
+        for reg in _QuantumManager.qc.qregs:
+            if reg not in _QuantumManager.main_qc.qregs:
+                _QuantumManager.main_qc.add_register(reg)
+
         regs = []
         for reg in _QuantumManager.main_qc.qregs:
-            regs.extend([reg[i] for i in range(reg.size)])
+            if reg != self.condition_register:
+                regs.extend([reg[i] for i in range(reg.size)])
 
-        controlled_gate = _QuantumManager.qc.to_gate().control(1)
+        controlled_gate = _QuantumManager.qc.to_gate(label="custom").control(1)
         _QuantumManager.main_qc.append(controlled_gate, [self.condition_register[0]] + regs)
         _QuantumManager.qc = _QuantumManager.main_qc
+        _QuantumManager.main_qc = _QuantumManager.main_qc
+        
+        print(_QuantumManager.main_qc)
 
         cm.manual_enter()
 
@@ -472,8 +477,9 @@ class _QuantumManager:
     def get_measurement(cls, creg): # method to get measurement from quantum circuit
 
         sv_sim = Aer.get_backend('statevector_simulator')
-        result = sv_sim.run(cls.qc).result()
-        counts = list(result.get_counts(cls.qc).keys())[0][::-1].split(" ")
+        transpiled_circuit = transpile(cls.qc, sv_sim)
+        result = sv_sim.run(transpiled_circuit).result()
+        counts = list(result.get_counts(transpiled_circuit).keys())[0][::-1].split(" ")
         print(creg, counts)
         return int(counts[cls.cregs.index(creg)], 2)
  
