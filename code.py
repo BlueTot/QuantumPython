@@ -13,8 +13,5 @@ def process_item(state):
         y.store(state)
     return
 
-m = measure(x)
-print(m)
 n = measure(y)
 print(n)
-

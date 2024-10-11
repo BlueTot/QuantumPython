@@ -458,7 +458,7 @@ class qif:
         _QuantumManager.qc = _QuantumManager.main_qc
         _QuantumManager.main_qc = _QuantumManager.main_qc
         
-        print(_QuantumManager.main_qc)
+        #print(_QuantumManager.main_qc)
 
         cm.manual_enter()
 
@@ -480,6 +480,6 @@ class _QuantumManager:
         transpiled_circuit = transpile(cls.qc, sv_sim)
         result = sv_sim.run(transpiled_circuit).result()
         counts = list(result.get_counts(transpiled_circuit).keys())[0][::-1].split(" ")
-        print(creg, counts)
+        #print(creg, counts)
         return int(counts[cls.cregs.index(creg)], 2)
  
