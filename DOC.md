@@ -1,12 +1,6 @@
-# QuantumPython
+# Documentation
 
-_[DISCLAIMER]: This project is very much experimental, so please DO NOT use this language for any serious quantum programming._<br/>
-_[WARNING]: This code is a major work in progress, so the features of this language may change often._
-
-QuantumPython is an experimental high-level quantum programming language that aims to represent quantum constructs in a classical way. This is a python library that uses IBM's qiskit library to compile the quantum component of the code file into quantum circuits, so it can represent both pure-quantum and hybrid algorithms.
-
-## Data Types
-
+## Data 
 In classical computing, the fundamental data type is the binary integer, which is an array of bits. Likewise, in quantum computing, the fundamental data type is the quantum register, which is an array of qubits. In QuantumPython, there are two supported types of quantum registers:
 
   `qsv` : A modifiable quantum register <br/>
