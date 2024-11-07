@@ -41,6 +41,30 @@ As a side note, `qsv`'s are _mutable_ data types, and they _cannot_ be copied us
 
 ## Conditional Logic
 
-## Quantum Functions
+Conditional logic in quantum computing works similarly to classical computing, except that the `parallelize` operator must be applied first, as a `qsv` and a `qconst` cannot be directly compared if the `qsv` is in superposition. In QuantumPython, if statements can be declared by the context manager `qif`.
+
+```python
+with qif(<quantum boolean>):
+  ...
+```
+The input to a `qif` must be a quantum boolean, which is basically a 1-bit `qsv`. Boolean expressions can also be substituted in instead, for example `qstate == qconst`
+
+Currently, the only two boolean operators that are supported are `==` and `and`
 
 ## Entanglement
+
+## Quantum Functions
+
+## Additional Tools
+
+- To view the contents of the quantum circuit being built behind the scenes, one can use the `printqc` function, which takes no arguments and returns nothing
+```python
+from qython import printqc
+printqc()
+```
+
+- To check the number of qubits being used at a particular instance, one can use the `qmemcount` function, which takes no arguments and returns an integer
+```python
+from qython import qmemcount
+print(qmemcount())
+```
