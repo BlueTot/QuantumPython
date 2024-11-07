@@ -462,6 +462,14 @@ class qif:
 
         cm.manual_enter()
 
+# function that prints the quantum circuit (debugging use!)
+def printqc():
+    print(_QuantumManager.main_qc)
+
+# function that returns the number of qubits being used currently
+def qmemcount():
+    return _QuantumManager.main_qc.num_qubits
+
 '''Circuit Manager'''
 
 class _QuantumManager:

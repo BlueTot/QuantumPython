@@ -1,4 +1,4 @@
-from qython import qsv, qconst, quantum, measure, parallelize, auto_execute, qif
+from qython import qsv, qconst, quantum, measure, parallelize, auto_execute, qif, qmemcount, printqc
 
 x = qsv(3, 0)
 x.h()
@@ -15,3 +15,5 @@ def process_item(state):
 
 n = measure(y)
 print(n)
+printqc()
+print(qmemcount())
