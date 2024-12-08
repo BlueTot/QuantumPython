@@ -9,8 +9,8 @@ import builtins
 
 '''Helper Classes & Functions'''
 
-class _ArgumentError(Exception): # Argument error
-    pass
+# class _ArgumentError(Exception): # Argument error
+#     pass
 
 class _QuantumError(Exception): # Quantum error
     pass
@@ -105,7 +105,7 @@ class _iqs: # intermediate quantum state, used for calculations by interpreter
         if isinstance(other, qconst): # argument is a qconst
             q2 = _QuantumManager.qconst_mapping[hash(other)]
 
-        elif isinstance(other, _qconst_inner) or isinstance(other, iqs): # argument is a _qconst_inner
+        elif isinstance(other, _qconst_inner) or isinstance(other, _iqs): # argument is a _qconst_inner
             q2 = other
         
         else: # argument is a qstate
@@ -170,7 +170,7 @@ class _qstate_inner: # quantum state class, instantiated through the use of the 
         if isinstance(other, qconst): # argument is a qconst
             q2 = _QuantumManager.qconst_mapping[hash(other)]
 
-        elif isinstance(other, (_qconst_inner, iqs)): # argument is a _qconst_inner
+        elif isinstance(other, (_qconst_inner, _iqs)): # argument is a _qconst_inner
             q2 = other
         
         else: # argument is a qstate
@@ -202,7 +202,7 @@ class _qstate_inner: # quantum state class, instantiated through the use of the 
         if isinstance(other, qconst): # argument is a qconst
             q2 = _QuantumManager.qconst_mapping[hash(other)]
 
-        elif isinstance(other, (_qconst_inner, iqs)): # argument is a _qconst_inner
+        elif isinstance(other, (_qconst_inner, _iqs)): # argument is a _qconst_inner
             q2 = other
         
         else: # argument is a qstate
@@ -369,7 +369,7 @@ def measure(qvar : qsv) -> int: # Measurement function
     if not isinstance(qvar, qsv): # Variable is not a QSV
         raise TypeError(f"Measurement cannot be performed on {type(qvar)}")
 
-    outside_qvar = qvar
+    # outside_qvar = qvar
     qvar = _QuantumManager.qsv_mapping[hash(qvar)] # map to inner class
 
     creg = ClassicalRegister(qvar.num_bits)
@@ -385,7 +385,7 @@ def quantum(func): # Quantum function decorator
 
     def wrapper(*args, **kwargs): # wrapper to get the arguments of the function
         
-        has_quantum_args= any([isinstance(arg, qstate) or isinstance(arg, qsv) for arg in list(args)+list(kwargs.values())])
+        has_quantum_args= any([isinstance(arg, _qstate) or isinstance(arg, qsv) for arg in list(args)+list(kwargs.values())])
         
         if not has_quantum_args: # all classical arguments
             return func(*args, **kwargs) # call the classical function itself
